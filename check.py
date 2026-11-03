@@ -3,7 +3,7 @@ from datetime import datetime, date
 from playwright.sync_api import sync_playwright
 
 URL = "https://kbw-personal-services.butlerapp2.de/demo#/courses?fcourses=yaounde_deutsch_b2"
-【entity-TOKEN¦canonical_name=TOKEN】 = os.getenv("TG_TOKEN", "")
+BOT_TOKEN = os.getenv("TG_TOKEN", "")
 CHAT_IDS = ["8806922221", "-5434725968"]
 
 notifie_libre_aujourdhui = {}
@@ -11,7 +11,7 @@ notifie_libre_aujourdhui = {}
 def notify(text):
     for cid in CHAT_IDS:
         try:
-            requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                           json={"chat_id": cid, "text": text, "parse_mode": "HTML"}, timeout=15)
         except: pass
     print(text)
@@ -54,9 +54,7 @@ def scan_with_dates(page):
     return libres
 
 def remplir_formulaire(page):
-    print("  📝 Remplissage formulaire...")
-
-    # RECONSTRUIT pass.jpg depuis 2 secrets (ou 1 seul en fallback)
+    print("  Remplissage formulaire...")
     try:
         b64_1 = os.getenv("KBW_PASS_B64_1","")
         b64_2 = os.getenv("KBW_PASS_B64_2","")
@@ -66,7 +64,7 @@ def remplir_formulaire(page):
         if b64 and not os.path.exists("pass.jpg"):
             with open("pass.jpg","wb") as f:
                 f.write(base64.b64decode(b64.strip()))
-            print("  📎 Passeport reconstruit depuis Secrets - image originale")
+            print("  Passeport reconstruit")
     except Exception as e:
         print(f"  Erreur passeport: {e}")
 
@@ -106,7 +104,7 @@ def remplir_formulaire(page):
     try:
         if os.path.exists("pass.jpg"):
             page.locator('input[type="file"]').first.set_input_files("pass.jpg")
-            print("  📎 Passeport uploadé")
+            print("  Passeport uploadé")
     except: pass
     page.wait_for_timeout(1000)
 
@@ -114,8 +112,8 @@ def auto_book_infini(page, slot_text, header_el):
     tentative = 0
     while True:
         tentative += 1
-        print(f"\n🤖 AUTO-BOOK #{tentative} : {slot_text}")
-        notify(f"🤖 Tentative #{tentative}\n📌 {slot_text}")
+        print(f"\nAUTO-BOOK #{tentative} : {slot_text}")
+        notify(f"🤖 Tentative #{tentative}\n{slot_text}")
         try:
             try:
                 header_el.click(); page.wait_for_timeout(1000)
@@ -137,7 +135,6 @@ def auto_book_infini(page, slot_text, header_el):
                     cb = page.locator('input[type="checkbox"]').first
                     if cb.count()>0 and not cb.is_checked():
                         cb.check()
-                        print("  ☑️ Case cochée")
                     final_btn = page.locator('button').filter(has_text=re.compile(r'abschicken|Anmelden', re.I)).last
                     if final_btn.count()==0:
                         final_btn = page.locator('button').filter(has_text=re.compile(r'Suivant|Bezahlen', re.I)).last
@@ -146,12 +143,11 @@ def auto_book_infini(page, slot_text, header_el):
                     page.wait_for_timeout(6000)
                     err = page.locator('text=/Une erreur technique|technical error/i')
                     if err.count()>0:
-                        print(f"  ⚠️ Erreur technique - retry infini #{tentative}")
-                        notify(f"⚠️ Erreur technique - retry #{tentative}")
+                        print(f"Erreur technique - retry #{tentative}")
                         time.sleep(3)
                         continue
                     else:
-                        notify(f"✅ <b>INSCRIPTION RÉUSSIE - BOT S'ARRÊTE</b>\n📌 {slot_text}\n\nLe bot s'est arrêté.")
+                        notify(f"✅ INSCRIPTION REUSSIE - {slot_text} - Bot s'arrete")
                         with open("SUCCESS.txt","w") as f:
                             f.write(slot_text)
                         return True
@@ -160,7 +156,7 @@ def auto_book_infini(page, slot_text, header_el):
         except:
             time.sleep(3); continue
 
-notify("🚀 <b>BOT DÉMARRÉ</b>\n✅ Surveillance 24h/24 active\n🎯 Dernière décembre sinon après décembre\n💤 S'arrête après succès")
+notify("BOT DEMARRE - Surveillance 24h active - Derniere Dec sinon apres Dec")
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
@@ -171,7 +167,7 @@ with sync_playwright() as p:
     max_dur = 21000 if os.getenv("GITHUB_ACTIONS")=="true" else 999999999
 
     while time.time() - start < max_dur:
-        print(f"\n🔵 PHASE 1 : INIT")
+        print(f"\nPHASE 1 : INIT")
         try:
             page.goto(URL, wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(4000)
@@ -182,11 +178,11 @@ with sync_playwright() as p:
             page = browser.new_page()
             continue
 
-        print(f"🟡 PHASE 2 : DETECTION")
+        print(f"PHASE 2 : DETECTION")
         all_libres = scan_with_dates(page)
         all_valid = [x for x in all_libres if x[2]]
         dec_libres = [x for x in all_valid if x[2].month == 12 and x[2].year == 2026]
-        print(f"  → {len(all_valid)} libres, {len(dec_libres)} en décembre")
+        print(f"  -> {len(all_valid)} libres, {len(dec_libres)} en decembre")
 
         if first:
             memo = set([t for t,_,_ in all_libres])
@@ -197,7 +193,7 @@ with sync_playwright() as p:
         for slot in actuelles_txt:
             if slot in notifie_libre_aujourdhui and notifie_libre_aujourdhui[slot] == date.today(): continue
             if slot not in memo:
-                notify(f"🔥 <b>LIBRE</b>\n📌 {slot}")
+                notify(f"LIBRE {slot}")
                 notifie_libre_aujourdhui[slot] = date.today()
         memo = actuelles_txt
 
@@ -208,13 +204,13 @@ with sync_playwright() as p:
         if dec_libres:
             dec_libres.sort(key=lambda x: x[2])
             cible = dec_libres[-1]
-            print(f"🟢 CIBLE DÉCEMBRE : {cible[0]}")
+            print(f"CIBLE DECEMBRE : {cible[0]}")
         else:
             apres_dec = [x for x in all_valid if x[2] > datetime(2026, 12, 31)]
             apres_dec.sort(key=lambda x: x[2])
             if not apres_dec: continue
             cible = apres_dec[0]
-            print(f"🟠 CIBLE APRÈS DÉCEMBRE : {cible[0]}")
+            print(f"CIBLE APRES DECEMBRE : {cible[0]}")
 
         txt, el, dobj = cible
         if auto_book_infini(page, txt, el):
