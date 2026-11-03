@@ -35,11 +35,11 @@ jobs:
           KBW_PASS_B64: ${{ secrets.KBW_PASS_B64 }}
         run: python -u check.py
 
-      - name: Auto-restart sauf si succès
+      - name: Auto-restart sauf si succes
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -f SUCCESS.txt ]; then echo "Inscription réussie, stop"; exit 0; fi
+          if [ -f SUCCESS.txt ]; then echo "Inscription reussie, stop"; exit 0; fi
           sleep 60
           curl -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/${{ github.repository }}/actions/workflows/kbw.yml/dispatches -d '{"ref":"main"}' || true
