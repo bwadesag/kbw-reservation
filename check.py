@@ -3,7 +3,7 @@ from datetime import datetime, date
 from playwright.sync_api import sync_playwright
 
 URL = "https://kbw-personal-services.butlerapp2.de/demo#/courses?fcourses=yaounde_deutsch_b2"
-TOKEN = os.getenv("TG_TOKEN", "")
+【entity-TOKEN¦canonical_name=TOKEN】 = os.getenv("TG_TOKEN", "")
 CHAT_IDS = ["8806922221", "-5434725968"]
 
 notifie_libre_aujourdhui = {}
@@ -55,16 +55,23 @@ def scan_with_dates(page):
 
 def remplir_formulaire(page):
     print("  📝 Remplissage formulaire...")
+
+    # RECONSTRUIT pass.jpg depuis 2 secrets (ou 1 seul en fallback)
     try:
-        b64 = os.getenv("KBW_PASS_B64","")
+        b64_1 = os.getenv("KBW_PASS_B64_1","")
+        b64_2 = os.getenv("KBW_PASS_B64_2","")
+        b64 = b64_1 + b64_2
+        if not b64:
+            b64 = os.getenv("KBW_PASS_B64","")
         if b64 and not os.path.exists("pass.jpg"):
             with open("pass.jpg","wb") as f:
-                f.write(base64.b64decode(b64))
-            print("  📎 Passeport reconstruit")
-    except: pass
+                f.write(base64.b64decode(b64.strip()))
+            print("  📎 Passeport reconstruit depuis Secrets - image originale")
+    except Exception as e:
+        print(f"  Erreur passeport: {e}")
 
     def try_fill(selectors, value):
-        if not value: return
+        if not value: return False
         for sel in selectors:
             try:
                 el = page.locator(sel).first
@@ -89,7 +96,6 @@ def remplir_formulaire(page):
     try_fill(['input[name*="strasse" i]', 'input[name*="adresse" i]'], os.getenv("KBW_STRASSE",""))
     try_fill(['input[name*="plz" i]'], os.getenv("KBW_PLZ",""))
     try_fill(['input[name*="ort" i]', 'input[name*="stadt" i]'], os.getenv("KBW_ORT",""))
-
     try:
         land = os.getenv("KBW_LAND","Cameroun")
         sel_land = page.locator('select').filter(has_text=re.compile(r'Land', re.I)).first
@@ -100,6 +106,7 @@ def remplir_formulaire(page):
     try:
         if os.path.exists("pass.jpg"):
             page.locator('input[type="file"]').first.set_input_files("pass.jpg")
+            print("  📎 Passeport uploadé")
     except: pass
     page.wait_for_timeout(1000)
 
@@ -130,6 +137,7 @@ def auto_book_infini(page, slot_text, header_el):
                     cb = page.locator('input[type="checkbox"]').first
                     if cb.count()>0 and not cb.is_checked():
                         cb.check()
+                        print("  ☑️ Case cochée")
                     final_btn = page.locator('button').filter(has_text=re.compile(r'abschicken|Anmelden', re.I)).last
                     if final_btn.count()==0:
                         final_btn = page.locator('button').filter(has_text=re.compile(r'Suivant|Bezahlen', re.I)).last
@@ -139,11 +147,11 @@ def auto_book_infini(page, slot_text, header_el):
                     err = page.locator('text=/Une erreur technique|technical error/i')
                     if err.count()>0:
                         print(f"  ⚠️ Erreur technique - retry infini #{tentative}")
+                        notify(f"⚠️ Erreur technique - retry #{tentative}")
                         time.sleep(3)
                         continue
                     else:
-                        notify(f"✅ <b>INSCRIPTION RÉUSSIE - BOT S'ARRÊTE</b>\n📌 {slot_text}\n💰 130.000 XAF\n\nLe bot s'est arrêté automatiquement.")
-                        # Crée fichier pour arrêter le 24h/24
+                        notify(f"✅ <b>INSCRIPTION RÉUSSIE - BOT S'ARRÊTE</b>\n📌 {slot_text}\n\nLe bot s'est arrêté.")
                         with open("SUCCESS.txt","w") as f:
                             f.write(slot_text)
                         return True
@@ -152,7 +160,8 @@ def auto_book_infini(page, slot_text, header_el):
         except:
             time.sleep(3); continue
 
-notify("✅ Bot Auto-Book démarré - Dernière Dec sinon après Dec - S'arrête après succès")
+notify("🚀 <b>BOT DÉMARRÉ</b>\n✅ Surveillance 24h/24 active\n🎯 Dernière décembre sinon après décembre\n💤 S'arrête après succès")
+
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
     page = browser.new_page()
@@ -209,5 +218,4 @@ with sync_playwright() as p:
 
         txt, el, dobj = cible
         if auto_book_infini(page, txt, el):
-            print("🎉 INSCRIPTION RÉUSSIE - BOT S'ARRÊTE")
             break
