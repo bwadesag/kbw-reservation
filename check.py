@@ -164,7 +164,7 @@ with sync_playwright() as p:
     memo = set()
     first = True
     start = time.time()
-    max_dur = 21000 if os.getenv("GITHUB_ACTIONS")=="true" else 999999999
+    max_dur = 20700 if os.getenv("GITHUB_ACTIONS")=="true" else 999999999
 
     while time.time() - start < max_dur:
         print(f"\nPHASE 1 : INIT")
