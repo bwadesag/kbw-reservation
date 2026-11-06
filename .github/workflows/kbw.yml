@@ -1,12 +1,14 @@
-name: KBW Auto-Book Decembre 24h
+name: KBW 24h Non-Stop
 on:
-  schedule:
-    - cron: '0 */4 * * *'
   workflow_dispatch:
-  
+
 permissions:
   contents: write
   actions: write
+
+concurrency:
+  group: kbw-bot-unique
+  cancel-in-progress: true
 
 jobs:
   check:
