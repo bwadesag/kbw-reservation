@@ -9,9 +9,17 @@ BOT_TOKEN = os.getenv("TG_TOKEN", "")
 CHAT_IDS = ["8806922221", "-5434725968"]
 
 notifie_libre_aujourdhui = {}
-FULL = re.compile(r"fully booked|ausgebucht|déjà complet|keine freien|no places left", re.I)
-OK = re.compile(r"buchung erfolgreich|vielen dank|thank you for your|inscription réussie|successfully registered|booking was successful|Buchungsnummer", re.I)
-NEXT = re.compile(r"Next|Weiter|Suivant|abschicken|Anmelden|Bezahlen|Buchen|Book", re.I)
+FULL = re.compile(r"fully booked|ausgebucht|déjà complet|keine freien|no places left|déjà complets", re.I)
+OK = re.compile(
+    r"buchung erfolgreich|booking successful|réservation réussie|reservation réussie|paiement réussi|payment successful|zahlung erfolgreich",
+    re.I,
+)
+PAY = re.compile(r"obligation de paiement|Kostenpflichtig buchen|Book with costs|Zahlungspflichtig", re.I)
+STEP = re.compile(r"Suivant|Weiter|Next|Passer à la caisse|Zur Kasse|Checkout", re.I)
+CONSENTS = (
+    re.compile(r"verbindlich abschicken", re.I),
+    re.compile(r"nächste Buchung speichern|Save data for next booking|prochaine réservation|prochaine reservation", re.I),
+)
 
 
 def notify(text):
@@ -87,6 +95,15 @@ def _self_check():
     no_december = [s for s in slots if not s["label"].startswith("dec")]
     assert choisir(no_december, today)["label"] == "nov"
     assert choisir([s for s in slots if s["places"] < 0 or s["course"] != TARGET], today) is None
+    assert PAY.search("Réserver avec obligation de paiement")
+    assert PAY.search("Kostenpflichtig buchen")
+    assert PAY.search("Book with costs")
+    assert not PAY.search("Suivant »")
+    assert STEP.search("Suivant »") and STEP.search("Weiter »") and STEP.search("Next »")
+    assert OK.search("Réservation réussie") and OK.search("Buchung erfolgreich") and OK.search("Booking successful")
+    assert CONSENTS[0].search("Ich möchte meine Anmeldung verbindlich abschicken")
+    assert CONSENTS[1].search("Enregistrer les données pour la prochaine réservation.")
+    assert CONSENTS[1].search("Save data for next booking.")
     print("self-check ok")
 
 
@@ -170,15 +187,49 @@ def remplir_formulaire(page):
         pass
 
 
+def _check_one(box):
+    try:
+        if not box.is_checked():
+            box.check(force=True)
+    except Exception:
+        return False
+    return True
+
+
 def _check_boxes(page):
     boxes = page.locator('input[type="checkbox"]')
     for i in range(boxes.count()):
-        try:
-            box = boxes.nth(i)
-            if not box.is_checked():
-                box.check()
-        except Exception:
+        _check_one(boxes.nth(i))
+    for pattern in CONSENTS:
+        node = page.get_by_text(pattern)
+        if node.count() == 0:
             continue
+        box = node.first.locator("xpath=ancestor::*[.//input[@type='checkbox']][1]//input[@type='checkbox']").first
+        try:
+            if box.count() > 0:
+                _check_one(box)
+                continue
+        except Exception:
+            pass
+        try:
+            node.first.click()
+        except Exception:
+            pass
+
+
+def _click_action(page):
+    buttons = page.locator("button")
+    for pattern in (PAY, STEP):
+        found = buttons.filter(has_text=pattern)
+        for i in range(found.count() - 1, -1, -1):
+            button = found.nth(i)
+            try:
+                if button.is_enabled():
+                    button.click()
+                    return True
+            except Exception:
+                continue
+    return False
 
 
 def auto_book(page, slot):
@@ -203,15 +254,9 @@ def auto_book(page, slot):
                 break
             remplir_formulaire(page)
             _check_boxes(page)
-            button = page.locator("button").filter(has_text=NEXT)
-            if button.count() == 0:
+            if not _click_action(page):
                 break
-            try:
-                button.last.click()
-                page.wait_for_timeout(4000)
-            except Exception:
-                time.sleep(2)
-                break
+            page.wait_for_timeout(4000)
             body = page.locator("body").inner_text()
             if re.search(r"erreur technique|technical error", body, re.I):
                 print(f"  erreur technique #{tentative}")
@@ -244,7 +289,7 @@ def run():
     notify("BOT DEMARRE - toutes les pages - Yaounde B2, decembre en priorite")
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True, args=["--no-sandbox"])
-        page = browser.new_page()
+        page = browser.new_context(locale="fr-FR").new_page()
         start = time.time()
         max_dur = 20700 if os.getenv("GITHUB_ACTIONS") == "true" else 999999999
         while time.time() - start < max_dur:
