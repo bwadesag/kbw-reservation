@@ -10,11 +10,8 @@ CHAT_IDS = ["8806922221", "-5434725968"]
 
 notifie_libre_aujourdhui = {}
 FULL = re.compile(r"fully booked|ausgebucht|déjà complet|keine freien|no places left|déjà complets", re.I)
-OK = re.compile(
-    r"buchung erfolgreich|booking successful|réservation réussie|reservation réussie|paiement réussi|payment successful|zahlung erfolgreich",
-    re.I,
-)
 PAY = re.compile(r"obligation de paiement|Kostenpflichtig buchen|Book with costs|Zahlungspflichtig", re.I)
+ERROR = re.compile(r"erreur|error|fehler|invalid|invalide|est requis", re.I)
 STEP = re.compile(r"Suivant|Weiter|Next|Passer à la caisse|Zur Kasse|Checkout", re.I)
 CONSENTS = (
     re.compile(r"verbindlich abschicken", re.I),
@@ -100,7 +97,10 @@ def _self_check():
     assert PAY.search("Book with costs")
     assert not PAY.search("Suivant »")
     assert STEP.search("Suivant »") and STEP.search("Weiter »") and STEP.search("Next »")
-    assert OK.search("Réservation réussie") and OK.search("Buchung erfolgreich") and OK.search("Booking successful")
+    assert _confirmed("Merci beaucoup ! Nous avons reçu votre réservation")
+    assert _confirmed("merci beaucoups ! nous avons recu votre reservation")
+    assert not _confirmed("Réservation réussie")
+    assert not _confirmed("Merci beaucoup")
     assert CONSENTS[0].search("Ich möchte meine Anmeldung verbindlich abschicken")
     assert CONSENTS[1].search("Enregistrer les données pour la prochaine réservation.")
     assert CONSENTS[1].search("Save data for next booking.")
@@ -217,19 +217,56 @@ def _check_boxes(page):
             pass
 
 
-def _click_action(page):
-    buttons = page.locator("button")
-    for pattern in (PAY, STEP):
-        found = buttons.filter(has_text=pattern)
-        for i in range(found.count() - 1, -1, -1):
-            button = found.nth(i)
-            try:
-                if button.is_enabled():
-                    button.click()
-                    return True
-            except Exception:
-                continue
+def _confirmed(text):
+    return bool(
+        re.search(r"merci beaucoups?", text, re.I)
+        and re.search(r"re[cç]u votre r[eé]servation", text, re.I)
+    )
+
+
+def _click_named(page, pattern):
+    found = page.locator("button").filter(has_text=pattern)
+    for i in range(found.count() - 1, -1, -1):
+        button = found.nth(i)
+        try:
+            if button.is_enabled():
+                button.click()
+                return True
+        except Exception:
+            continue
     return False
+
+
+def _done(slot):
+    notify(f"INSCRIPTION REUSSIE - {slot['label']} - Bot s'arrete")
+    with open("SUCCESS.txt", "w", encoding="utf-8") as handle:
+        handle.write(slot["label"])
+    return True
+
+
+def _pay_until_confirmed(page, slot):
+    # ponytail: no attempt cap. The Actions job (~6h) is the ceiling; the workflow restarts after that.
+    n = 0
+    while True:
+        body = page.locator("body").inner_text()
+        if _confirmed(body):
+            return _done(slot)
+        pay = page.locator("button").filter(has_text=PAY)
+        if FULL.search(body) and pay.count() == 0:
+            print("  creneau complet")
+            return False
+        if _has_error(body) or pay.count() > 0:
+            _check_boxes(page)
+            _click_named(page, PAY)
+            n += 1
+            print(f"  Réserver #{n}")
+            if n == 1:
+                notify(f"Paiement en cours\n{slot['label']}")
+        page.wait_for_timeout(3000)
+
+
+def _has_error(text):
+    return bool(ERROR.search(text))
 
 
 def auto_book(page, slot):
@@ -243,32 +280,20 @@ def auto_book(page, slot):
             print(f"  goto: {exc}")
             time.sleep(3)
             continue
-        booked = False
         for _ in range(8):
             body = page.locator("body").inner_text()
+            if _confirmed(body):
+                return _done(slot)
             if FULL.search(body):
                 print("  creneau complet")
                 return False
-            if OK.search(body):
-                booked = True
-                break
+            if page.locator("button").filter(has_text=PAY).count() > 0:
+                return _pay_until_confirmed(page, slot)
             remplir_formulaire(page)
             _check_boxes(page)
-            if not _click_action(page):
+            if not _click_named(page, STEP):
                 break
             page.wait_for_timeout(4000)
-            body = page.locator("body").inner_text()
-            if re.search(r"erreur technique|technical error", body, re.I):
-                print(f"  erreur technique #{tentative}")
-                break
-            if OK.search(body):
-                booked = True
-                break
-        if booked:
-            notify(f"INSCRIPTION REUSSIE - {slot['label']} - Bot s'arrete")
-            with open("SUCCESS.txt", "w", encoding="utf-8") as handle:
-                handle.write(slot["label"])
-            return True
         time.sleep(3)
     return False
 
