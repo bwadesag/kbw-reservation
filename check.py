@@ -104,7 +104,30 @@ def _self_check():
     assert CONSENTS[0].search("Ich möchte meine Anmeldung verbindlich abschicken")
     assert CONSENTS[1].search("Enregistrer les données pour la prochaine réservation.")
     assert CONSENTS[1].search("Save data for next booking.")
+    assert _as_form_date("1990-04-21") == "21.04.1990"
+    assert _as_form_date("21.04.1990") == "21.04.1990"
     print("self-check ok")
+
+
+def _as_form_date(value):
+    value = (value or "").strip()
+    match = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", value)
+    if not match:
+        return value
+    return f"{match.group(3)}.{match.group(2)}.{match.group(1)}"
+
+
+def _fill_label(page, pattern, value):
+    if not value:
+        return False
+    try:
+        field = page.get_by_label(pattern).first
+        if field.count() > 0:
+            field.fill(value)
+            return True
+    except Exception:
+        return False
+    return False
 
 
 def _fill(page, selectors, value):
@@ -160,31 +183,76 @@ def remplir_formulaire(page):
     anrede = os.getenv("KBW_ANREDE", "Herr")
     gender = {"herr": "male", "frau": "female", "mr": "male", "mrs": "female"}.get(anrede.strip().lower(), anrede)
     _select(page, ['select[name*="anrede" i]', 'select[name*="salutation" i]'], [anrede, gender, "Herr", "Frau", "male", "female"])
-    _fill(page, ['input[name="first_name"]', 'input[name*="vorname" i]'], os.getenv("KBW_VORNAME", ""))
-    _fill(page, ['input[name="last_name"]', 'input[name*="nachname" i]'], os.getenv("KBW_NACHNAME", ""))
-    _fill(page, ['input[name="email"]', 'input[type="email"]'], os.getenv("KBW_EMAIL", ""))
-    _fill(page, ['input[type="tel"]', 'input[name*="telefon" i]'], os.getenv("KBW_TELEFON", ""))
-    _fill(page, ['input[name*="geburtstag" i]', 'input[name*="geburt" i]'], os.getenv("KBW_GEBURTSDATUM", ""))
-    _fill(page, ['input[name*="geburtsort" i]'], os.getenv("KBW_GEBURTSORT", ""))
-    _fill(page, ['input[name*="geburtsland" i]'], os.getenv("KBW_LAND", "Cameroun"))
-    _fill(page, ['input[name*="muttersprache" i]'], os.getenv("KBW_MUTTERSPRACHE", ""))
-    _fill(page, ['input[name*="strasse" i]', 'input[name*="adresse" i]'], os.getenv("KBW_STRASSE", ""))
-    _fill(page, ['input[name*="plz" i]'], os.getenv("KBW_PLZ", ""))
-    _fill(page, ['input[name*="wohnort" i]', 'input[name*="ort" i]', 'input[name*="stadt" i]'], os.getenv("KBW_ORT", ""))
-    land = os.getenv("KBW_LAND", "Cameroun")
-    _select(
-        page,
-        ['select[name="country_id"]', 'select[name*="land" i]', 'select[name*="country" i]'],
-        [land, "Cameroun", "Cameroon", "Kamerun"],
-    )
     try:
-        if os.path.exists("pass.jpg"):
-            file_input = page.locator('input[type="file"]')
-            if file_input.count() > 0:
-                file_input.first.set_input_files("pass.jpg")
-                print("  Passeport uploadé")
+        salutation = page.get_by_label(re.compile(r"anrede|salutation", re.I)).first
+        if salutation.count() > 0:
+            for label in (anrede, gender, "male", "female"):
+                try:
+                    salutation.select_option(label=label)
+                    break
+                except Exception:
+                    try:
+                        salutation.select_option(value=label)
+                        break
+                    except Exception:
+                        continue
     except Exception:
         pass
+    vorname = os.getenv("KBW_VORNAME", "")
+    nachname = os.getenv("KBW_NACHNAME", "")
+    _fill_label(page, re.compile(r"first name|vorname|prénom", re.I), vorname)
+    _fill(page, ['input[name*="first_name" i]', 'input[name*="vorname" i]'], vorname)
+    _fill_label(page, re.compile(r"last name|nachname", re.I), nachname)
+    _fill(page, ['input[name*="last_name" i]', 'input[name*="nachname" i]'], nachname)
+    email = os.getenv("KBW_EMAIL", "")
+    _fill_label(page, re.compile(r"e-?mail", re.I), email)
+    _fill(page, ['input[name*="email" i]', 'input[type="email"]'], email)
+    _fill(page, ['input[type="tel"]', 'input[name*="telefon" i]'], os.getenv("KBW_TELEFON", ""))
+    naissance = _as_form_date(os.getenv("KBW_GEBURTSDATUM", ""))
+    _fill_label(page, re.compile(r"geburtstag|anniversaire|date de naissance", re.I), naissance)
+    _fill(page, ['input[name*="geburtstag" i]', 'input[name*="geburt" i]', 'input[placeholder="dd.mm.yyyy"]'], naissance)
+    ort_naissance = os.getenv("KBW_GEBURTSORT", "")
+    _fill_label(page, re.compile(r"geburtsort|lieu de naissance", re.I), ort_naissance)
+    _fill(page, ['input[name*="geburtsort" i]'], ort_naissance)
+    land = os.getenv("KBW_LAND", "Cameroun")
+    _fill_label(page, re.compile(r"geburtsland|pays de naissance", re.I), land)
+    _fill(page, ['input[name*="geburtsland" i]'], land)
+    langue = os.getenv("KBW_MUTTERSPRACHE", "")
+    _fill_label(page, re.compile(r"muttersprache|langue maternelle", re.I), langue)
+    _fill(page, ['input[name*="muttersprache" i]'], langue)
+    _fill(page, ['input[name*="strasse" i]', 'input[name*="adresse" i]'], os.getenv("KBW_STRASSE", ""))
+    _fill(page, ['input[name*="plz" i]'], os.getenv("KBW_PLZ", ""))
+    ville = os.getenv("KBW_ORT", "")
+    _fill_label(page, re.compile(r"wohnort|lieu de résidence", re.I), ville)
+    _fill(page, ['input[name*="wohnort" i]', 'input[name*="stadt" i]'], ville)
+    _select(
+        page,
+        ['select[name*="country_id" i]', 'select[name*="country" i]'],
+        [land, "Cameroun", "Cameroon", "Kamerun"],
+    )
+    _upload_pass(page)
+
+
+def _upload_pass(page):
+    if not os.path.exists("pass.jpg"):
+        return False
+    target = page.locator('input[type="file"]')
+    if target.count() == 0:
+        try:
+            label = page.get_by_text(re.compile(r"Upload Pass", re.I)).first
+            if label.count() > 0:
+                target = label.locator("xpath=ancestor::*[.//input[@type='file']][1]//input[@type='file']")
+        except Exception:
+            return False
+    if target.count() == 0:
+        return False
+    try:
+        target.first.set_input_files("pass.jpg")
+        print("  Passeport uploadé dans Upload Pass")
+        return True
+    except Exception as exc:
+        print(f"  Upload Pass: {exc}")
+        return False
 
 
 def _check_one(box):
