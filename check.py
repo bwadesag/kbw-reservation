@@ -71,9 +71,6 @@ def fetch_slots():
 
 def choisir(slots, today):
     mine = [s for s in slots if s["course"] == TARGET and s["places"] > 0 and s["when"].date() >= today]
-    december = [s for s in mine if s["when"].year == 2026 and s["when"].month == 12]
-    if december:
-        return max(december, key=lambda s: s["when"])
     if not mine:
         return None
     return min(mine, key=lambda s: s["when"])
@@ -88,9 +85,9 @@ def _self_check():
         {"course": TARGET, "places": 5, "when": datetime(2026, 12, 2), "label": "dec-early"},
         {"course": "douala_deutsch_b1", "places": 4, "when": datetime(2026, 11, 21), "label": "other"},
     ]
-    assert choisir(slots, today)["label"] == "dec-late"
-    no_december = [s for s in slots if not s["label"].startswith("dec")]
-    assert choisir(no_december, today)["label"] == "nov"
+    assert choisir(slots, today)["label"] == "nov"
+    only_december = [s for s in slots if s["label"].startswith("dec")]
+    assert choisir(only_december, today)["label"] == "dec-early"
     assert choisir([s for s in slots if s["places"] < 0 or s["course"] != TARGET], today) is None
     assert PAY.search("Réserver avec obligation de paiement")
     assert PAY.search("Kostenpflichtig buchen")
@@ -379,7 +376,7 @@ def _signaler(slots, today):
 def run():
     from playwright.sync_api import sync_playwright
 
-    notify("BOT DEMARRE - toutes les pages - Yaounde B2, decembre en priorite")
+    notify("BOT DEMARRE - toutes les pages - Yaounde B2, date la plus proche")
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True, args=["--no-sandbox"])
         page = browser.new_context(locale="fr-FR").new_page()
