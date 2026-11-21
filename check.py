@@ -381,8 +381,13 @@ def run():
         browser = playwright.chromium.launch(headless=True, args=["--no-sandbox"])
         page = browser.new_context(locale="fr-FR").new_page()
         start = time.time()
+        last_alive = start
+        last_report = "pas encore de catalogue"
         max_dur = 20700 if os.getenv("GITHUB_ACTIONS") == "true" else 999999999
         while time.time() - start < max_dur:
+            if time.time() - last_alive >= 7200:
+                notify(f"BOT EN VIE - {last_report}")
+                last_alive = time.time()
             print("\nPHASE 1 : PAGES")
             try:
                 slots, pages = fetch_slots()
@@ -393,7 +398,9 @@ def run():
             today = date.today()
             cible = choisir(slots, today)
             free = [s for s in slots if s["places"] > 0 and s["when"].date() >= today]
-            print(f"  -> {pages} pages, {len(slots)} creneaux, {len(free)} libres")
+            b2_free = len([s for s in free if s["course"] == TARGET])
+            last_report = f"{pages} pages, {len(slots)} creneaux, {b2_free} B2 libres"
+            print(f"  -> {last_report}, {len(free)} libres au total")
             _signaler(free, today)
             if not cible:
                 time.sleep(5)
