@@ -2,7 +2,7 @@ import os, re, time, requests, base64
 from datetime import datetime, date
 
 API = "https://kbw-personal-services.butlerapp2.de/api/book?exclude=trainer,appointments,extra_prices,forms&perPage=50&page={page}"
-TARGET = "yaounde_deutsch_b2"
+TARGETS = ("yaounde_deutsch_b2", "douala_deutsch_b2")
 # ponytail: 40 pages is the ceiling. Upgrade path: stop on the API total count if Butlerapp adds one.
 MAX_PAGES = 40
 BOT_TOKEN = os.getenv("TG_TOKEN", "")
@@ -70,7 +70,7 @@ def fetch_slots():
 
 
 def choisir(slots, today):
-    mine = [s for s in slots if s["course"] == TARGET and s["places"] > 0 and s["when"].date() >= today]
+    mine = [s for s in slots if s["course"] in TARGETS and s["places"] > 0 and s["when"].date() >= today]
     if not mine:
         return None
     return min(mine, key=lambda s: s["when"])
@@ -79,16 +79,17 @@ def choisir(slots, today):
 def _self_check():
     today = date(2026, 11, 20)
     slots = [
-        {"course": TARGET, "places": -2, "when": datetime(2026, 12, 1), "label": "dec-full"},
-        {"course": TARGET, "places": 3, "when": datetime(2026, 11, 24), "label": "nov"},
-        {"course": TARGET, "places": 1, "when": datetime(2026, 12, 9), "label": "dec-late"},
-        {"course": TARGET, "places": 5, "when": datetime(2026, 12, 2), "label": "dec-early"},
+        {"course": "yaounde_deutsch_b2", "places": -2, "when": datetime(2026, 12, 1), "label": "dec-full"},
+        {"course": "yaounde_deutsch_b2", "places": 3, "when": datetime(2026, 11, 24), "label": "nov"},
+        {"course": "yaounde_deutsch_b2", "places": 1, "when": datetime(2026, 12, 9), "label": "dec-late"},
+        {"course": "yaounde_deutsch_b2", "places": 5, "when": datetime(2026, 12, 2), "label": "dec-early"},
+        {"course": "douala_deutsch_b2", "places": 2, "when": datetime(2026, 11, 22), "label": "douala"},
         {"course": "douala_deutsch_b1", "places": 4, "when": datetime(2026, 11, 21), "label": "other"},
     ]
-    assert choisir(slots, today)["label"] == "nov"
+    assert choisir(slots, today)["label"] == "douala"
     only_december = [s for s in slots if s["label"].startswith("dec")]
     assert choisir(only_december, today)["label"] == "dec-early"
-    assert choisir([s for s in slots if s["places"] < 0 or s["course"] != TARGET], today) is None
+    assert choisir([s for s in slots if s["course"] not in TARGETS or s["places"] < 0], today) is None
     assert PAY.search("Réserver avec obligation de paiement")
     assert PAY.search("Kostenpflichtig buchen")
     assert PAY.search("Book with costs")
@@ -376,7 +377,7 @@ def _signaler(slots, today):
 def run():
     from playwright.sync_api import sync_playwright
 
-    notify("BOT DEMARRE - toutes les pages - Yaounde B2, date la plus proche")
+    notify("BOT DEMARRE - Yaounde et Douala B2, date la plus proche")
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True, args=["--no-sandbox"])
         page = browser.new_context(locale="fr-FR").new_page()
@@ -398,8 +399,9 @@ def run():
             today = date.today()
             cible = choisir(slots, today)
             free = [s for s in slots if s["places"] > 0 and s["when"].date() >= today]
-            b2_free = len([s for s in free if s["course"] == TARGET])
-            last_report = f"{pages} pages, {len(slots)} creneaux, {b2_free} B2 libres"
+            yao = len([s for s in free if s["course"] == "yaounde_deutsch_b2"])
+            dou = len([s for s in free if s["course"] == "douala_deutsch_b2"])
+            last_report = f"{pages} pages, {len(slots)} creneaux, {yao} Yaounde B2 libres, {dou} Douala B2 libres"
             print(f"  -> {last_report}, {len(free)} libres au total")
             _signaler(free, today)
             if not cible:
